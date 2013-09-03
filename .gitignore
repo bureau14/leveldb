@@ -1,13 +1,21 @@
-# Compiled Object files
+build_config.mk
+
+db_bench
+leveldbutil
+*_test
+
 *.slo
 *.lo
 *.o
 
 # Compiled Dynamic libraries
 *.so
-*.dylib
+*.so.*
+*.dylib*
 
 # Compiled Static libraries
 *.lai
 *.la
 *.a
+
+
