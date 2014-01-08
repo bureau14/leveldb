@@ -128,22 +128,22 @@ class RandomGenerator {
     pos_ = 0;
   }
 
-  Slice Generate(int len) {
+  Slice Generate(size_t len) {
     if (pos_ + len > data_.size()) {
       pos_ = 0;
       assert(len < data_.size());
     }
-    pos_ += len;
+    pos_ += static_cast<int>(len);
     return Slice(data_.data() + pos_ - len, len);
   }
 };
 
 static Slice TrimSpace(Slice s) {
-  int start = 0;
+  size_t start = 0;
   while (start < s.size() && isspace(s[start])) {
     start++;
   }
-  int limit = s.size();
+  size_t limit = s.size();
   while (limit > start && isspace(s[limit-1])) {
     limit--;
   }
@@ -180,7 +180,7 @@ class Stats {
     done_ = 0;
     bytes_ = 0;
     seconds_ = 0;
-    start_ = Env::Default()->NowMicros();
+    start_ = static_cast<double>(Env::Default()->NowMicros());
     finish_ = start_;
     message_.clear();
   }
@@ -198,7 +198,7 @@ class Stats {
   }
 
   void Stop() {
-    finish_ = Env::Default()->NowMicros();
+    finish_ = static_cast<double>(Env::Default()->NowMicros());
     seconds_ = (finish_ - start_) * 1e-6;
   }
 
@@ -208,7 +208,7 @@ class Stats {
 
   void FinishedSingleOp() {
     if (FLAGS_histogram) {
-      double now = Env::Default()->NowMicros();
+      double now = static_cast<double>(Env::Default()->NowMicros());
       double micros = now - last_op_finish_;
       hist_.Add(micros);
       if (micros > 20000) {
@@ -399,7 +399,7 @@ class Benchmark {
     heap_counter_(0) {
     std::vector<std::string> files;
     Env::Default()->GetChildren(FLAGS_db, &files);
-    for (int i = 0; i < files.size(); i++) {
+    for (size_t i = 0; i < files.size(); i++) {
       if (Slice(files[i]).starts_with("heap-")) {
         Env::Default()->DeleteFile(std::string(FLAGS_db) + "/" + files[i]);
       }
@@ -924,7 +924,7 @@ class Benchmark {
 }  // namespace leveldb
 
 int main(int argc, char** argv) {
-  FLAGS_write_buffer_size = leveldb::Options().write_buffer_size;
+  FLAGS_write_buffer_size = static_cast<int>(leveldb::Options().write_buffer_size);
   FLAGS_open_files = leveldb::Options().max_open_files;
   std::string default_db_path;
 

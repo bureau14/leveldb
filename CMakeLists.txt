@@ -1,3 +1,66 @@
+IF (NOT QDB_VERSION)
+    cmake_minimum_required (VERSION 2.8)
+
+# not included from the marvellous qdb
+    project (leveldb)    
+    SET(CMAKE_DEBUG_POSTFIX "d")
+    SET(QDB_DEBUG_POSTFIX "d")
+    SET(QDB_RELEASE_POSTFIX "")
+
+    IF(CMAKE_CL_64)
+        SET(QDB_CPU_ARCH "64bit")
+    ELSE(CMAKE_CL_64)
+        IF (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "amd64" OR ${CMAKE_SYSTEM_PROCESSOR} STREQUAL "x86_64")
+            SET(QDB_CPU_ARCH "64bit")
+        ELSE(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "amd64" OR ${CMAKE_SYSTEM_PROCESSOR} STREQUAL "x86_64")
+            SET(QDB_CPU_ARCH "32bit")
+        ENDIF (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "amd64" OR ${CMAKE_SYSTEM_PROCESSOR} STREQUAL "x86_64")
+    ENDIF(CMAKE_CL_64)
+
+# for Windows we need to add some information to find the "right" boost library dir
+    IF (MSVC)
+        IF(QDB_CPU_ARCH STREQUAL "64bit")
+            MESSAGE(STATUS "Looking for 64-bit boost libraries")
+            FILE(TO_CMAKE_PATH $ENV{BOOST_ROOT}/stage64/lib BOOST_LIBRARYDIR)
+        ELSE(QDB_CPU_ARCH STREQUAL "64bit")
+            MESSAGE(STATUS "Looking for 32-bit boost libraries")
+            FILE(TO_CMAKE_PATH $ENV{BOOST_ROOT}/stage/lib BOOST_LIBRARYDIR)
+        ENDIF(QDB_CPU_ARCH STREQUAL "64bit")
+    ENDIF(MSVC)
+
+    set(Boost_USE_STATIC_LIBS ON)
+    set(Boost_USE_MULTITHREAD ON)
+    set(Boost_USE_STATIC_RUNTIME OFF)
+
+    set(Boost_ADDITIONAL_VERSIONS)
+
+    find_package(Boost COMPONENTS 
+        chrono
+        date_time
+        filesystem
+        system
+        thread
+        REQUIRED)
+
+    SET(SNAPPY_LIBRARY "")
+
+    STRING(REGEX MATCH "clang" CLANG ${CMAKE_CXX_COMPILER})
+
+    IF(CMAKE_COMPILER_IS_GNUCXX OR CLANG)
+        find_library(Pthread_LIBRARY pthread)
+        find_library(Realtime_LIBRARY rt)
+        # find library can be problematic with stdc++ which is why we hardwire the link
+        SET(Stdcpp_LIBRARY stdc++)
+    ELSE(CMAKE_COMPILER_IS_GNUCXX OR CLANG)
+        SET(Pthread_LIBRARY "")
+        SET(Realtime_LIBRARY "")
+        SET(Stdcpp_LIBRARY "")
+    ENDIF(CMAKE_COMPILER_IS_GNUCXX OR CLANG)
+
+ELSE(NOT QDB_VERSION)
+    SET(SNAPPY_LIBRARY "snappy")
+ENDIF(NOT QDB_VERSION)
+
 SET(LEVELDB_IDE_FOLDER "leveldb")
 
 include_directories(${Boost_INCLUDE_DIRS}
@@ -109,8 +172,10 @@ ELSE(WIN32)
 ENDIF(WIN32)
 
 # forward files list and include dirs to parent scope
-SET(LEVEL_DB_SOURCE_FILES ${LEVEL_DB_FILES} PARENT_SCOPE)
-SET(LEVEL_DB_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/include PARENT_SCOPE)
+IF(QDB_VERSION)
+    SET(LEVEL_DB_SOURCE_FILES ${LEVEL_DB_FILES} PARENT_SCOPE)
+    SET(LEVEL_DB_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/include PARENT_SCOPE)
+ENDIF(QDB_VERSION)
 
 add_library(leveldb ${LEVEL_DB_FILES})
 
@@ -123,7 +188,7 @@ add_executable(leveldbutil
 
 target_link_libraries(leveldbutil
     leveldb
-    snappy
+    ${SNAPPY_LIBRARY}
     ${Boost_LIBRARIES}
     ${Pthread_LIBRARY}
     ${Additional_LIBRARIES})
@@ -172,15 +237,15 @@ FUNCTION(LEVELDB_ADD_TEST TESTNAME TESTFILE)
         leveldb_test_rt
 
         leveldb
-        snappy
+        ${SNAPPY_LIBRARY}
         ${Boost_LIBRARIES}
         ${Pthread_LIBRARY}
         ${Additional_LIBRARIES})
 
-    set_target_properties(leveldb_${TESTNAME}_test PROPERTIES
-        FOLDER ${LEVELDB_IDE_FOLDER}
-        DEBUG_POSTFIX ${QDB_DEBUG_POSTFIX}
-        COMPILE_FLAGS ${LEVELDB_COMPILE_FLAGS})
+        set_target_properties(leveldb_${TESTNAME}_test PROPERTIES
+            FOLDER ${LEVELDB_IDE_FOLDER}
+            DEBUG_POSTFIX ${QDB_DEBUG_POSTFIX}
+            COMPILE_FLAGS ${LEVELDB_COMPILE_FLAGS})
 
 ENDFUNCTION(LEVELDB_ADD_TEST)
 

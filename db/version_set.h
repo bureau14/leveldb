@@ -39,7 +39,7 @@ class WritableFile;
 // Return the smallest index i such that files[i]->largest >= key.
 // Return files.size() if there is no such file.
 // REQUIRES: "files" contains a sorted list of non-overlapping files.
-extern int FindFile(const InternalKeyComparator& icmp,
+extern size_t FindFile(const InternalKeyComparator& icmp,
                     const std::vector<FileMetaData*>& files,
                     const Slice& key);
 
@@ -108,7 +108,7 @@ class Version {
   int PickLevelForMemTableOutput(const Slice& smallest_user_key,
                                  const Slice& largest_user_key);
 
-  int NumFiles(int level) const { return files_[level].size(); }
+  size_t NumFiles(int level) const { return files_[level].size(); }
 
   // Return a human readable string that describes this version's contents.
   std::string DebugString() const;
@@ -200,7 +200,7 @@ class VersionSet {
   }
 
   // Return the number of Table files at the specified level.
-  int NumLevelFiles(int level) const;
+  size_t NumLevelFiles(int level) const;
 
   // Return the combined file size of all files at the specified level.
   int64_t NumLevelBytes(int level) const;
@@ -292,8 +292,6 @@ class VersionSet {
 
   void AppendVersion(Version* v);
 
-  bool ManifestContains(const std::string& record) const;
-
   Env* const env_;
   const std::string dbname_;
   const Options* const options_;
@@ -334,10 +332,10 @@ class Compaction {
   VersionEdit* edit() { return &edit_; }
 
   // "which" must be either 0 or 1
-  int num_input_files(int which) const { return inputs_[which].size(); }
+  size_t num_input_files(int which) const { return inputs_[which].size(); }
 
   // Return the ith input file at "level()+which" ("which" must be 0 or 1).
-  FileMetaData* input(int which, int i) const { return inputs_[which][i]; }
+  FileMetaData* input(int which, size_t i) const { return inputs_[which][i]; }
 
   // Maximum size of files to build during this compaction.
   uint64_t MaxOutputFileSize() const { return max_output_file_size_; }

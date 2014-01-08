@@ -124,7 +124,7 @@ class PosixSequentialFile: public SequentialFile {
   }
 
   virtual Status Skip(uint64_t n) {
-  if (fseek(file_, n, SEEK_CUR)) {
+  if (fseek(file_, static_cast<long>(n), SEEK_CUR)) {
     return Status::IOError(filename_, strerror(errno));
   }
   return Status::OK();
@@ -153,7 +153,7 @@ class PosixRandomAccessFile: public RandomAccessFile {
       return Status::IOError(filename_, strerror(errno));
     }
 
-    int r = ::_read(fd_, scratch, n);
+    int r = ::_read(fd_, scratch, static_cast<unsigned int>(n));
     *result = Slice(scratch, (r < 0) ? 0 : r);
     lock.unlock();
 #else

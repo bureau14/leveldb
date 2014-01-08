@@ -20,8 +20,8 @@ static int DecodeKey(const Slice& k) {
   assert(k.size() == 4);
   return DecodeFixed32(k.data());
 }
-static void* EncodeValue(uintptr_t v) { return reinterpret_cast<void*>(v); }
-static int DecodeValue(void* v) { return reinterpret_cast<uintptr_t>(v); }
+static void* EncodeValue(intptr_t v) { return reinterpret_cast<void*>(v); }
+static intptr_t DecodeValue(void* v) { return reinterpret_cast<intptr_t>(v); }
 
 class CacheTest {
  public:
@@ -33,8 +33,8 @@ class CacheTest {
   }
 
   static const int kCacheSize = 1000;
-  std::vector<int> deleted_keys_;
-  std::vector<int> deleted_values_;
+  std::vector<intptr_t> deleted_keys_;
+  std::vector<intptr_t> deleted_values_;
   Cache* cache_;
 
   CacheTest() : cache_(NewLRUCache(kCacheSize)) {
@@ -47,7 +47,7 @@ class CacheTest {
 
   int Lookup(int key) {
     Cache::Handle* handle = cache_->Lookup(EncodeKey(key));
-    const int r = (handle == NULL) ? -1 : DecodeValue(cache_->Value(handle));
+    const intptr_t r = (handle == NULL) ? -1 : DecodeValue(cache_->Value(handle));
     if (handle != NULL) {
       cache_->Release(handle);
     }

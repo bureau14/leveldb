@@ -249,12 +249,12 @@ class ConcurrentTest {
 
         // Note that generation 0 is never inserted, so it is ok if
         // <*,0,*> is missing.
-        ASSERT_TRUE((gen(pos) == 0) ||
-                    (gen(pos) > static_cast<uint64_t>(initial_state.Get(key(pos))))
+        ASSERT_TRUE((gen(pos) == 0u) ||
+                    (gen(pos) > static_cast<uint64_t>(initial_state.Get(static_cast<int>(key(pos)))))
                     ) << "key: " << key(pos)
                       << "; gen: " << gen(pos)
                       << "; initgen: "
-                      << initial_state.Get(key(pos));
+                      << initial_state.Get(static_cast<int>(key(pos)));
 
         // Advance to next key in the valid key space
         if (key(pos) < key(current)) {

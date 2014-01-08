@@ -96,7 +96,7 @@ void PutVarint64(std::string* dst, uint64_t v) {
 }
 
 void PutLengthPrefixedSlice(std::string* dst, const Slice& value) {
-  PutVarint32(dst, value.size());
+  PutVarint32(dst, static_cast<uint32_t>(value.size()));
   dst->append(value.data(), value.size());
 }
 

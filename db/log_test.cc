@@ -433,7 +433,7 @@ TEST(LogTest, ErrorJoinsRecords) {
 
   ASSERT_EQ("correct", Read());
   ASSERT_EQ("EOF", Read());
-  const int dropped = DroppedBytes();
+  const int dropped = static_cast<int>(DroppedBytes());
   ASSERT_LE(dropped, 2*kBlockSize + 100);
   ASSERT_GE(dropped, 2*kBlockSize);
 }

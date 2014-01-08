@@ -183,14 +183,15 @@ void MergingIterator::FindLargest() {
 }
 }  // namespace
 
-Iterator* NewMergingIterator(const Comparator* cmp, Iterator** list, int n) {
-  assert(n >= 0);
+Iterator* NewMergingIterator(const Comparator* cmp, Iterator** list, size_t n) {
+  // the assertion below has been removed has size_t cannot be negative  
+  //assert(n >= 0);
   if (n == 0) {
     return NewEmptyIterator();
   } else if (n == 1) {
     return list[0];
   } else {
-    return new MergingIterator(cmp, list, n);
+    return new MergingIterator(cmp, list, static_cast<unsigned int>(n));
   }
 }
 

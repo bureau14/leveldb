@@ -105,9 +105,9 @@ class CorruptionTest {
         bad_keys++;
         continue;
       }
-      missed += (key - next_expected);
-      next_expected = key + 1;
-      if (iter->value() != Value(key, &value_space)) {
+      missed += static_cast<int>(key - next_expected);
+      next_expected = static_cast<int>(key + 1);
+      if (iter->value() != Value(static_cast<int>(key), &value_space)) {
         bad_values++;
       } else {
         correct++;
@@ -130,12 +130,12 @@ class CorruptionTest {
     FileType type;
     std::string fname;
     int picked_number = -1;
-    for (int i = 0; i < filenames.size(); i++) {
+    for (size_t i = 0; i < filenames.size(); i++) {
       if (ParseFileName(filenames[i], &number, &type) &&
           type == filetype &&
           int(number) > picked_number) {  // Pick latest file
         fname = dbname_ + "/" + filenames[i];
-        picked_number = number;
+        picked_number = static_cast<int>(number);
       }
     }
     ASSERT_TRUE(!fname.empty()) << filetype;
@@ -199,7 +199,7 @@ class CorruptionTest {
 };
 
 TEST(CorruptionTest, Recovery) {
-  Build(100);  
+  Build(100);
   Check(100, 100);
   Close();
   Corrupt(kLogFile, 19, 1);      // WriteBatch tag for first record
@@ -219,7 +219,7 @@ TEST(CorruptionTest, RecoverWriteError) {
 TEST(CorruptionTest, NewFileErrorDuringWrite) {
   // Do enough writing to force minor compaction
   env_.writable_file_error_ = true;
-  const int num = 3 + (Options().write_buffer_size / kValueSize);
+  const int num = 3 + static_cast<int>(Options().write_buffer_size / kValueSize);
   std::string value_storage;
   Status s;
   for (int i = 0; s.ok() && i < num; i++) {
@@ -243,6 +243,21 @@ TEST(CorruptionTest, TableFile) {
   Corrupt(kTableFile, 100, 1);
   Reopen();
   Check(90, 99);
+}
+
+TEST(CorruptionTest, TableFileRepair) {
+  options_.block_size = 2 * kValueSize;  // Limit scope of corruption
+  options_.paranoid_checks = true;
+  Reopen();
+  Build(100);
+  DBImpl* dbi = reinterpret_cast<DBImpl*>(db_);
+  dbi->TEST_CompactMemTable();
+  dbi->TEST_CompactRange(0, NULL, NULL);
+  dbi->TEST_CompactRange(1, NULL, NULL);
+  Close();
+  Corrupt(kTableFile, 100, 1);
+  Reopen();
+  Check(95, 99);
 }
 
 TEST(CorruptionTest, TableFileIndexData) {

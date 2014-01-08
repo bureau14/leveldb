@@ -95,7 +95,7 @@ Status Writer::EmitPhysicalRecord(RecordType t, const char* ptr, size_t n) {
       s = dest_->Flush();
     }
   }
-  block_offset_ += kHeaderSize + n;
+  block_offset_ += kHeaderSize + static_cast<int>(n);
   return s;
 }
 

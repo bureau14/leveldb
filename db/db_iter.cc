@@ -105,7 +105,7 @@ class DBIter: public Iterator {
 
   // Pick next gap with average value of config::kReadBytesPeriod.
   int64_t RandomPeriod() {
-    return static_cast<int64_t>(rnd_.Uniform(2*config::kReadBytesPeriod));
+    return rnd_.Uniform(2*config::kReadBytesPeriod);
   }
 
   DBImpl* db_;
@@ -129,7 +129,7 @@ class DBIter: public Iterator {
 
 inline bool DBIter::ParseKey(ParsedInternalKey* ikey) {
   Slice k = iter_->key();
-  size_t n = k.size() + iter_->value().size();
+  int64_t n = k.size() + iter_->value().size();
   bytes_counter_ -= n;
   while (bytes_counter_ < 0) {
     bytes_counter_ += RandomPeriod();
