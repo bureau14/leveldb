@@ -1,7 +1,7 @@
 LevelDB B14 branch
 ==================
 
-Current version: 1.15
+Current version: 1.16
 
 Bureau 14 [LevelDB](http://code.google.com/p/leveldb/) branch with full Windows support. This is not an official LevelDB branch, but the branch we use in our product, [quasardb](https://www.quasardb.net/).
 
