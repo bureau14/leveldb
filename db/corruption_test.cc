@@ -80,7 +80,13 @@ class CorruptionTest {
       Slice key = Key(i, &key_space);
       batch.Clear();
       batch.Put(key, Value(i, &value_space));
-      ASSERT_OK(db_->Write(WriteOptions(), &batch));
+      WriteOptions options;
+      // Corrupt() doesn't work without this sync on windows; stat reports 0 for
+      // the file size.
+      if (i == n - 1) {
+        options.sync = true;
+      }
+      ASSERT_OK(db_->Write(options, &batch));
     }
   }
 
