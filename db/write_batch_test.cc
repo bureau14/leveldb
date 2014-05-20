@@ -22,6 +22,11 @@ static std::string PrintContents(WriteBatch* b) {
   Iterator* iter = mem->NewIterator();
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     ParsedInternalKey ikey;
+
+    // removes gcc warning about "maybe" uninitialized variable
+    ikey.type = kTypeDeletion;
+    ikey.sequence = 0;
+
     ASSERT_TRUE(ParseInternalKey(iter->key(), &ikey));
     switch (ikey.type) {
       case kTypeValue:
