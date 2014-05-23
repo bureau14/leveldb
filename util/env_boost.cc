@@ -2,8 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <atomic>
+#include <cstdint>
 #include <deque>
 #include <set>
+#include <thread>
+#include <functional>
+#include <memory>
+#include <condition_variable>
+#include <mutex>
 
 #ifdef WIN32
 #include <windows.h>
@@ -54,36 +61,29 @@
 #include <fstream>
 
 // Boost includes - see WINDOWS file to see which modules to install
-#include <boost/date_time/gregorian/gregorian.hpp>
-#include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/filesystem/convenience.hpp>
-#include <boost/thread/once.hpp>
-#include <boost/thread/thread.hpp>
-#include <boost/bind.hpp>
-#include <boost/scoped_ptr.hpp>
 #include <boost/interprocess/sync/file_lock.hpp>
-#include <boost/thread/condition_variable.hpp>
-#include <boost/thread/mutex.hpp>
+#include <boost/lexical_cast.hpp>
 
 namespace leveldb {
 namespace {
 
 // returns the ID of the current process
-static boost::uint32_t current_process_id(void) {
+static std::uint32_t current_process_id(void) {
 #ifdef _WIN32
-  return static_cast<boost::uint32_t>(::GetCurrentProcessId());
+  return static_cast<std::uint32_t>(::GetCurrentProcessId());
 #else
-  return static_cast<boost::uint32_t>(::getpid());
+  return static_cast<std::uint32_t>(::getpid());
 #endif
 }
 
 // returns the ID of the current thread
-static boost::uint32_t current_thread_id(void) {
+static std::uint32_t current_thread_id(void) {
 #ifdef _WIN32
-  return static_cast<boost::uint32_t>(::GetCurrentThreadId());
+  return static_cast<std::uint32_t>(::GetCurrentThreadId());
 #else
 #ifdef __linux
-  return static_cast<boost::uint32_t>(::syscall(__NR_gettid));
+  return static_cast<std::uint32_t>(::syscall(__NR_gettid));
 #else
   // just return the pid
   return current_process_id();
@@ -135,7 +135,7 @@ class PosixRandomAccessFile: public RandomAccessFile {
  private:
   std::string filename_;
   int fd_;
-  mutable boost::mutex mu_;
+  mutable std::mutex mu_;
 
  public:
   PosixRandomAccessFile(const std::string& fname, int fd)
@@ -147,7 +147,7 @@ class PosixRandomAccessFile: public RandomAccessFile {
     Status s;
 #ifdef WIN32
     // no pread on Windows so we emulate it with a mutex
-    boost::unique_lock<boost::mutex> lock(mu_);
+    std::unique_lock<std::mutex> lock(mu_);
 
     if (::_lseeki64(fd_, offset, SEEK_SET) == -1L) {
       return Status::IOError(filename_, strerror(errno));
@@ -236,7 +236,7 @@ public:
 
 private:
   boost::filesystem::path path_;
-  boost::uint64_t written_;
+  std::uint64_t written_;
   std::ofstream file_;
 };
 
@@ -254,15 +254,15 @@ class BoostFileLock : public FileLock {
 // any protection against multiple uses from the same process.
 class BoostLockTable {
  private:
-  boost::mutex mu_;
+  std::mutex mu_;
   std::set<std::string> locked_files_;
  public:
   bool Insert(const std::string& fname) {
-    boost::unique_lock<boost::mutex> l(mu_);
+    std::unique_lock<std::mutex> l(mu_);
     return locked_files_.insert(fname).second;
   }
   void Remove(const std::string& fname) {
-    boost::unique_lock<boost::mutex> l(mu_);
+    std::unique_lock<std::mutex> l(mu_);
     locked_files_.erase(fname);
   }
 };
@@ -274,12 +274,15 @@ class PosixEnv : public Env {
   {
       if (bgthread_)
       {
-          bgthread_->interrupt();
+          run_bg_thread_ = false;
+       
+          bgsignal_.notify_one();
+          
           bgthread_->join();
           bgthread_.reset();
       }
 
-      boost::unique_lock<boost::mutex> lock(mu_);
+      std::unique_lock<std::mutex> lock(mu_);
       queue_.clear();
   }
 
@@ -513,7 +516,7 @@ class PosixEnv : public Env {
   }
 
   virtual void SleepForMicroseconds(int micros) {
-  boost::this_thread::sleep(boost::posix_time::microseconds(micros));
+    std::this_thread::sleep_for(std::chrono::microseconds(micros));
   }
 
  private:
@@ -532,14 +535,15 @@ class PosixEnv : public Env {
     return NULL;
   }
 
-  boost::mutex mu_;
-  boost::condition_variable bgsignal_;
-  boost::scoped_ptr<boost::thread> bgthread_;
+  std::mutex mu_;
+  std::condition_variable bgsignal_;
+  std::unique_ptr<std::thread> bgthread_;
 
   // Entry per Schedule() call
   struct BGItem { void* arg; void (*function)(void*); };
   typedef std::deque<BGItem> BGQueue;
   BGQueue queue_;
+  std::atomic<bool> run_bg_thread_;
 
   BoostLockTable locks_;
 };
@@ -547,12 +551,13 @@ class PosixEnv : public Env {
 PosixEnv::PosixEnv() { }
 
 void PosixEnv::Schedule(void (*function)(void*), void* arg) {
-  boost::unique_lock<boost::mutex> lock(mu_);
+  std::unique_lock<std::mutex> lock(mu_);
 
   // Start background thread if necessary
   if (!bgthread_) {
+     run_bg_thread_ = true;
      bgthread_.reset(
-         new boost::thread(boost::bind(&PosixEnv::BGThreadWrapper, this)));
+         new std::thread(std::bind(&PosixEnv::BGThreadWrapper, this)));
   }
 
   // Add to priority queue
@@ -569,12 +574,17 @@ void PosixEnv::Schedule(void (*function)(void*), void* arg) {
 void PosixEnv::BGThread() {
     try
     {
-        while (true) {
+        while (run_bg_thread_) {
             // Wait until there is an item that is ready to run
-            boost::unique_lock<boost::mutex> lock(mu_);
+            std::unique_lock<std::mutex> lock(mu_);
 
-            while (queue_.empty()) {
+            while (queue_.empty() && run_bg_thread_) {
                 bgsignal_.wait(lock);
+            }
+
+            if (!run_bg_thread_)
+            {
+                break;
             }
 
             void (*function)(void*) = queue_.front().function;
@@ -585,7 +595,7 @@ void PosixEnv::BGThread() {
             (*function)(arg);
         }
     }
-    catch (const boost::thread_interrupted &) {}
+    catch (...) {}
 
 }
 
@@ -608,13 +618,13 @@ void PosixEnv::StartThread(void (*function)(void* arg), void* arg) {
   state->user_function = function;
   state->arg = arg;
 
-  boost::thread t(boost::bind(&StartThreadWrapper, state));
+  std::thread t(std::bind(&StartThreadWrapper, state));
+  t.detach();
 }
 
 }
 
-static const boost::once_flag init_value = BOOST_ONCE_INIT;
-static boost::once_flag once = BOOST_ONCE_INIT;
+static std::once_flag once;
 static Env* default_env = nullptr;
 static void InitDefaultEnv() { 
   ::memset(global_read_only_buf, 0, sizeof(global_read_only_buf));
@@ -622,12 +632,12 @@ static void InitDefaultEnv() {
 }
 
 Env* Env::Default() {
-  boost::call_once(once, InitDefaultEnv);
+  std::call_once(once, InitDefaultEnv);
   return default_env;
 }
 
 void Env::UnsafeDeallocate() {
-    once = init_value;
+    // will not be able to call again, but the purpose of this function is to get rid of fake alerts by analyzers
     delete default_env;
     default_env = nullptr;
 }
