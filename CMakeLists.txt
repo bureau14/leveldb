@@ -35,11 +35,9 @@ IF (NOT QDB_VERSION)
     set(Boost_ADDITIONAL_VERSIONS)
 
     find_package(Boost COMPONENTS 
-        chrono
         date_time
         filesystem
         system
-        thread
         REQUIRED)
 
     SET(SNAPPY_LIBRARY "")
