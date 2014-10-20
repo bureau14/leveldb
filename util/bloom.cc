@@ -11,7 +11,7 @@ namespace leveldb {
 
 namespace {
 static uint32_t BloomHash(const Slice& key) {
-  return Hash(key.data(), key.size(), 0xbc9f1d34);
+  return Hash(reinterpret_cast<const unsigned char *>(key.data()), key.size(), 0xbc9f1d34);
 }
 
 class BloomFilterPolicy : public FilterPolicy {
@@ -29,7 +29,7 @@ class BloomFilterPolicy : public FilterPolicy {
   }
 
   virtual const char* Name() const {
-    return "leveldb.BuiltinBloomFilter";
+    return "leveldb.BuiltinBloomFilter2";
   }
 
   virtual void CreateFilter(const Slice* keys, int n, std::string* dst) const {

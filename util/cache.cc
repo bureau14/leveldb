@@ -274,7 +274,7 @@ class ShardedLRUCache : public Cache {
   uint64_t last_id_;
 
   static inline uint32_t HashSlice(const Slice& s) {
-    return Hash(s.data(), s.size(), 0);
+    return Hash(reinterpret_cast<const unsigned char *>(s.data()), s.size(), 0);
   }
 
   static uint32_t Shard(uint32_t hash) {

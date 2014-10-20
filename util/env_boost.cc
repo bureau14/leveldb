@@ -3,6 +3,7 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <deque>
 #include <set>
@@ -511,8 +512,7 @@ class PosixEnv : public Env {
 
   virtual uint64_t NowMicros() {
     return static_cast<uint64_t>(
-        boost::posix_time::microsec_clock::universal_time()
-        .time_of_day().total_microseconds());
+        std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count());
   }
 
   virtual void SleepForMicroseconds(int micros) {

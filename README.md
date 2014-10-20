@@ -1,7 +1,7 @@
 LevelDB B14 branch
 ==================
 
-Current version: 1.17
+Current version: 1.18
 
 Bureau 14 [LevelDB](http://code.google.com/p/leveldb/) branch with full Windows support. This is not an official LevelDB branch, but the branch we use in our product, [quasardb](https://www.quasardb.net/).
 
@@ -11,7 +11,7 @@ Bureau 14 [LevelDB](http://code.google.com/p/leveldb/) branch with full Windows 
 * The Windows build requires [Boost](http://www.boost.org/); 
 * Our code is C++11ish and may require a recent compiler;
 * Lots of warnings fixed;
-* Is not 100% compliant with ugly Google coding style.
+* Is not 100% compliant with Google coding style.
 
 Tested on [FreeBSD](http://www.freebsd.org/), Linux and Windows (32-bit & 64-bit).
 

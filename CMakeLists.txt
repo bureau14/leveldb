@@ -70,9 +70,9 @@ include_directories(${Boost_INCLUDE_DIRS}
 # /wd4702: unreachable code because of singleton pattern
 # /wd4800: bool cast performance warning
 IF(MSVC)
-    SET(LEVELDB_COMPILE_FLAGS "/D_CRT_SECURE_NO_WARNINGS /wd4800 /wd4722 /wd4702")
+    SET(LEVELDB_COMPILE_FLAGS "/D_CRT_SECURE_NO_WARNINGS /wd4800 /wd4722 /wd4702 /DLEVELDB_ATOMIC_PRESENT")
 ELSE(MSVC)
-    SET(LEVELDB_COMPILE_FLAGS "-Wno-sign-compare")
+    SET(LEVELDB_COMPILE_FLAGS "-Wno-sign-compare -DLEVELDB_ATOMIC_PRESENT")
 ENDIF(MSVC)
 
 SET(LEVEL_DB_FILES
@@ -80,6 +80,7 @@ SET(LEVEL_DB_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/leveldb/cache.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/leveldb/comparator.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/leveldb/db.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/leveldb/dumpfile.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/leveldb/env.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/leveldb/iterator.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/leveldb/filter_policy.h
@@ -98,6 +99,7 @@ SET(LEVEL_DB_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/db/db_iter.h
     ${CMAKE_CURRENT_SOURCE_DIR}/db/dbformat.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/db/dbformat.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/db/dumpfile.cc
 	${CMAKE_CURRENT_SOURCE_DIR}/db/filename.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/db/filename.h
     ${CMAKE_CURRENT_SOURCE_DIR}/db/log_format.h
@@ -266,3 +268,4 @@ LEVELDB_ADD_TEST(db_bench ${CMAKE_CURRENT_SOURCE_DIR}/db/db_bench.cc)
 LEVELDB_ADD_TEST(version_set ${CMAKE_CURRENT_SOURCE_DIR}/db/version_set_test.cc)
 LEVELDB_ADD_TEST(filter_block ${CMAKE_CURRENT_SOURCE_DIR}/table/filter_block_test.cc)
 LEVELDB_ADD_TEST(bloom ${CMAKE_CURRENT_SOURCE_DIR}/util/bloom_test.cc)
+LEVELDB_ADD_TEST(hash ${CMAKE_CURRENT_SOURCE_DIR}/util/hash_test.cc)

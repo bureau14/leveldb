@@ -55,29 +55,32 @@ extern char* EncodeVarint64(char* dst, uint64_t value);
 // Lower-level versions of Get... that read directly from a character buffer
 // without any bounds checking.
 
-inline uint32_t DecodeFixed32(const char* ptr) {
+inline uint32_t DecodeFixed32(const void* ptr) {
   if (port::kLittleEndian) {
     // Load the raw bytes
     uint32_t result;
     memcpy(&result, ptr, sizeof(result));  // gcc optimizes this to a plain load
     return result;
   } else {
-    return ((static_cast<uint32_t>(static_cast<unsigned char>(ptr[0])))
-        | (static_cast<uint32_t>(static_cast<unsigned char>(ptr[1])) << 8)
-        | (static_cast<uint32_t>(static_cast<unsigned char>(ptr[2])) << 16)
-        | (static_cast<uint32_t>(static_cast<unsigned char>(ptr[3])) << 24));
+    const unsigned char * const p = static_cast<const unsigned char *>(ptr);
+
+    return ((static_cast<uint32_t>(p[0]))
+        | (static_cast<uint32_t>(p[1]) << 8)
+        | (static_cast<uint32_t>(p[2]) << 16)
+        | (static_cast<uint32_t>(p[3]) << 24));
   }
 }
 
-inline uint64_t DecodeFixed64(const char* ptr) {
+inline uint64_t DecodeFixed64(const void* ptr) {
   if (port::kLittleEndian) {
     // Load the raw bytes
     uint64_t result;
     memcpy(&result, ptr, sizeof(result));  // gcc optimizes this to a plain load
     return result;
   } else {
-    uint64_t lo = DecodeFixed32(ptr);
-    uint64_t hi = DecodeFixed32(ptr + 4);
+    const unsigned char * const p = static_cast<const unsigned char *>(ptr);
+    uint64_t lo = DecodeFixed32(p);
+    uint64_t hi = DecodeFixed32(p + 4);
     return (hi << 32) | lo;
   }
 }
