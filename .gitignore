@@ -20,3 +20,12 @@ leveldbutil
 
 
 /project/
+
+# CMake
+/CMakeFiles/
+*.dir/
+cmake_install.cmake
+
+# Visual Studio
+*.vcxproj
+*.vcxproj.filters
