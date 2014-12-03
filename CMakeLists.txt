@@ -184,7 +184,6 @@ endif(WIN32)
 
 # forward files list and include dirs to parent scope
 if(QDB_VERSION)
-    set(LEVEL_DB_SOURCE_FILES ${LEVEL_DB_FILES} PARENT_SCOPE)
     set(LEVEL_DB_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/include PARENT_SCOPE)
 endif(QDB_VERSION)
 
