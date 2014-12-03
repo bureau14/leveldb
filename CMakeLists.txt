@@ -70,10 +70,15 @@ include_directories(${Boost_INCLUDE_DIRS}
 # /wd4702: unreachable code because of singleton pattern
 # /wd4800: bool cast performance warning
 IF(MSVC)
-    SET(LEVELDB_COMPILE_FLAGS "/D_CRT_SECURE_NO_WARNINGS /wd4800 /wd4722 /wd4702 /DLEVELDB_ATOMIC_PRESENT")
+    SET(LEVELDB_COMPILE_FLAGS "/D_CRT_SECURE_NO_WARNINGS /wd4800 /wd4722 /wd4702")
 ELSE(MSVC)
-    SET(LEVELDB_COMPILE_FLAGS "-Wno-sign-compare -DLEVELDB_ATOMIC_PRESENT")
+    SET(LEVELDB_COMPILE_FLAGS "-Wno-sign-compare")
 ENDIF(MSVC)
+
+add_definitions(
+    -DLEVELDB_ATOMIC_PRESENT
+    -DSNAPPY
+)
 
 SET(LEVEL_DB_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/leveldb/c.h
