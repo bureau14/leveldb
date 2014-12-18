@@ -189,6 +189,12 @@ endif(QDB_VERSION)
 
 add_library(leveldb ${LEVEL_DB_FILES})
 
+target_link_libraries(leveldb
+    ${SNAPPY_LIBRARY}
+    ${Boost_LIBRARIES}
+    ${Pthread_LIBRARY}
+    ${Additional_LIBRARIES})
+
 set_target_properties(leveldb PROPERTIES 
     FOLDER ${LEVELDB_IDE_FOLDER})
 
@@ -196,11 +202,7 @@ add_executable(leveldbutil
     db/leveldb_main.cc)
 
 target_link_libraries(leveldbutil
-    leveldb
-    ${SNAPPY_LIBRARY}
-    ${Boost_LIBRARIES}
-    ${Pthread_LIBRARY}
-    ${Additional_LIBRARIES})
+    leveldb)
 
 set_target_properties(leveldbutil PROPERTIES
     FOLDER ${LEVELDB_IDE_FOLDER}
@@ -240,12 +242,7 @@ function(LEVELDB_ADD_TEST TESTNAME TESTFILE)
 
     target_link_libraries(leveldb_${TESTNAME}_test
         leveldb_test_rt
-
-        leveldb
-        ${SNAPPY_LIBRARY}
-        ${Boost_LIBRARIES}
-        ${Pthread_LIBRARY}
-        ${Additional_LIBRARIES})
+        leveldb)
 
     set_target_properties(leveldb_${TESTNAME}_test PROPERTIES
         FOLDER ${LEVELDB_IDE_FOLDER}
