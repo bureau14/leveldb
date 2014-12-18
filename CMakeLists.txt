@@ -193,7 +193,7 @@ target_link_libraries(leveldb
     ${SNAPPY_LIBRARY}
     ${Boost_LIBRARIES}
     ${Pthread_LIBRARY}
-    ${Additional_LIBRARIES})
+)
 
 set_target_properties(leveldb PROPERTIES 
     FOLDER ${LEVELDB_IDE_FOLDER})
