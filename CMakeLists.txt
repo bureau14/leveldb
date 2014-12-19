@@ -60,8 +60,6 @@ else(NOT QDB_VERSION)
     set(SNAPPY_LIBRARY "snappy")
 endif(NOT QDB_VERSION)
 
-set(LEVELDB_IDE_FOLDER "leveldb")
-
 include_directories(${Boost_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}
     include
@@ -195,9 +193,6 @@ target_link_libraries(leveldb
     ${Pthread_LIBRARY}
 )
 
-set_target_properties(leveldb PROPERTIES 
-    FOLDER ${LEVELDB_IDE_FOLDER})
-
 add_executable(leveldbutil
     db/leveldb_main.cc)
 
@@ -205,7 +200,6 @@ target_link_libraries(leveldbutil
     leveldb)
 
 set_target_properties(leveldbutil PROPERTIES
-    FOLDER ${LEVELDB_IDE_FOLDER}
     DEBUG_POSTFIX ${QDB_DEBUG_POSTFIX})
 
 # we distribute the leveldbutil as it might be useful
@@ -222,9 +216,6 @@ add_library(leveldb_test_rt
     util/testutil.cc
     util/testharness.h
     util/testharness.cc)
-
-set_target_properties(leveldb_test_rt PROPERTIES
-    FOLDER ${LEVELDB_IDE_FOLDER})
 
 function(LEVELDB_ADD_TEST TESTNAME TESTFILE)
     if(NOT TESTNAME)
@@ -245,7 +236,6 @@ function(LEVELDB_ADD_TEST TESTNAME TESTFILE)
         leveldb)
 
     set_target_properties(leveldb_${TESTNAME}_test PROPERTIES
-        FOLDER ${LEVELDB_IDE_FOLDER}
         DEBUG_POSTFIX ${QDB_DEBUG_POSTFIX})
 
     add_test(NAME leveldb_${TESTNAME}_test COMMAND leveldb_${TESTNAME}_test)
