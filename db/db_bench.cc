@@ -579,7 +579,8 @@ class Benchmark {
       arg[i].shared = &shared;
       arg[i].thread = new ThreadState(i);
       arg[i].thread->shared = &shared;
-      Env::Default()->StartThread(ThreadBody, &arg[i]);
+      std::thread t(std::bind(&ThreadBody, &arg[i]));
+      t.detach();
     }
 
     shared.mu.Lock();

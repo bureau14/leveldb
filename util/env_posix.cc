@@ -24,6 +24,14 @@
 #include "util/mutexlock.h"
 #include "util/posix_logger.h"
 
+#ifdef OS_FREEBSD
+#include <pthread_np.h>
+#endif
+
+#ifdef OS_LINUX
+#include <sys/prctl.h>
+#endif
+
 namespace leveldb {
 
 namespace {
@@ -291,21 +299,23 @@ class PosixLockTable {
 class PosixEnv : public Env {
  public:
   PosixEnv();
-  virtual ~PosixEnv() 
+  virtual ~PosixEnv()
   {
-    // signal the thread that we want to stop 
-    PthreadCall("lock", pthread_mutex_lock(&mu_));
-    running_ = false;
-    PthreadCall("signal", pthread_cond_signal(&bgsignal_));
-    PthreadCall("unlock", pthread_mutex_unlock(&mu_));
+    bool expected = true;
+    if (started_bgthread_.compare_exchange_strong(expected, false))
+    {
+      // signal the thread that we want to stop
+      PthreadCall("lock", pthread_mutex_lock(&mu_));
+      if (running_)
+      {
+        PthreadCall("signal", pthread_cond_signal(&bgsignal_));
+        running_ = false;
+      }
+      PthreadCall("unlock", pthread_mutex_unlock(&mu_));
 
-    // wait for thread termination
-    PthreadCall("join", pthread_join(bgthread_, nullptr));
-
-    // anal retentiveness in action
-    PthreadCall("lock", pthread_mutex_lock(&mu_));
-    started_bgthread_ = false;
-    PthreadCall("unlock", pthread_mutex_unlock(&mu_));
+      // wait for thread termination
+      PthreadCall("join", pthread_join(bgthread_, nullptr));
+    }
   }
 
   virtual Status NewSequentialFile(const std::string& fname,
@@ -460,8 +470,6 @@ class PosixEnv : public Env {
 
   virtual void Schedule(void (*function)(void*), void* arg);
 
-  virtual void StartThread(void (*function)(void* arg), void* arg);
-
   virtual Status GetTestDirectory(std::string* result) {
     const char* env = getenv("TEST_TMPDIR");
     if (env && env[0] != '\0') {
@@ -508,8 +516,13 @@ class PosixEnv : public Env {
   void PthreadCall(const char* label, int result) {
     if (result != 0) {
       fprintf(stderr, "pthread %s: %s\n", label, strerror(result));
-      abort();
+      exit(1);
     }
+  }
+
+  public:
+  virtual std::thread::native_handle_type GetBackgroundThreadHandle() {
+    return bgthread_;
   }
 
   // BGThread() is the body of the background thread
@@ -519,10 +532,12 @@ class PosixEnv : public Env {
     return NULL;
   }
 
+
   pthread_mutex_t mu_;
   pthread_cond_t bgsignal_;
   pthread_t bgthread_;
-  bool started_bgthread_;
+
+  std::atomic<bool> started_bgthread_;
   volatile bool running_;
 
   // Entry per Schedule() call
@@ -534,7 +549,8 @@ class PosixEnv : public Env {
   MmapLimiter mmap_limit_;
 };
 
-PosixEnv::PosixEnv() : started_bgthread_(false),
+PosixEnv::PosixEnv() : bgthread_(0),
+                       started_bgthread_(false),
                        running_(false) {
   PthreadCall("mutex_init", pthread_mutex_init(&mu_, NULL));
   PthreadCall("cvar_init", pthread_cond_init(&bgsignal_, NULL));
@@ -543,10 +559,12 @@ PosixEnv::PosixEnv() : started_bgthread_(false),
 void PosixEnv::Schedule(void (*function)(void*), void* arg) {
   PthreadCall("lock", pthread_mutex_lock(&mu_));
 
+  bool expected = false;
+
   // Start background thread if necessary
-  if (!started_bgthread_) {
+  // compare_exchange_strong returns true iff the value was changed
+  if (started_bgthread_.compare_exchange_strong(expected, /*desired=*/true)) {
     running_ = true;
-    started_bgthread_ = true;
     PthreadCall(
         "create thread",
         pthread_create(&bgthread_, NULL,  &PosixEnv::BGThreadWrapper, this));
@@ -567,6 +585,21 @@ void PosixEnv::Schedule(void (*function)(void*), void* arg) {
 }
 
 void PosixEnv::BGThread() {
+
+  // useful for debugging to name the thread, but for each platform, it changes...
+
+#ifdef OS_MACOSX
+  pthread_setname_np("leveldb background");
+#endif
+
+#ifdef OS_FREEBSD
+  pthread_set_name_np(pthread_self(), "leveldb background");
+#endif
+
+#ifdef OS_LINUX
+  prctl(PR_SET_NAME, "leveldb background", 0, 0, 0);
+#endif
+
   while (running_) {
     // Wait until there is an item that is ready to run
     PthreadCall("lock", pthread_mutex_lock(&mu_));
@@ -593,34 +626,18 @@ void PosixEnv::BGThread() {
   }
 }
 
-namespace {
-struct StartThreadState {
-  void (*user_function)(void*);
-  void* arg;
-};
-}
-static void* StartThreadWrapper(void* arg) {
-  StartThreadState* state = reinterpret_cast<StartThreadState*>(arg);
-  state->user_function(state->arg);
-  delete state;
-  return NULL;
-}
-
-void PosixEnv::StartThread(void (*function)(void* arg), void* arg) {
-  pthread_t t;
-  StartThreadState* state = new StartThreadState;
-  state->user_function = function;
-  state->arg = arg;
-  PthreadCall("start thread",
-              pthread_create(&t, NULL,  &StartThreadWrapper, state));
-}
-
 }  // namespace
 
 static const pthread_once_t init_value = PTHREAD_ONCE_INIT;
 static pthread_once_t once = PTHREAD_ONCE_INIT;
 static Env* default_env = nullptr;
-static void InitDefaultEnv() { default_env = new PosixEnv; }
+static void InitDefaultEnv() 
+{ 
+  default_env = new PosixEnv();
+
+  // force background thread creation so that thread affinity can work 
+  default_env->Schedule([](void *) {}, nullptr); 
+}
 
 Env* Env::Default() {
   pthread_once(&once, InitDefaultEnv);

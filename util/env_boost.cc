@@ -69,6 +69,32 @@
 namespace leveldb {
 namespace {
 
+static Status IOError(const std::string& context, int err_number) {
+  return Status::IOError(context, strerror(err_number));
+}
+
+static Status WinIOError(const std::string & context, DWORD err)
+{
+    std::string err_mess;
+    LPTSTR lpErrorText = NULL;
+	if (!::FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ALLOCATE_BUFFER, 
+		0, 
+        err, 
+        0, 
+        (LPTSTR)&lpErrorText, 
+        32000, 
+        0))
+    {
+        err_mess = "unknown error";
+    }
+    else
+    {
+    	err_mess = lpErrorText;
+	    ::LocalFree(lpErrorText);
+    }
+    return Status::IOError(context, err_mess);
+}
+
 // returns the ID of the current process
 static std::uint32_t current_process_id(void) {
 #ifdef _WIN32
@@ -92,156 +118,116 @@ static std::uint32_t current_thread_id(void) {
 #endif
 }
 
-static char global_read_only_buf[0x8000];
-
-class PosixSequentialFile: public SequentialFile {
+class WindowsSequentialFile: public SequentialFile {
  private:
   std::string filename_;
-  FILE* file_;
+  HANDLE handle_;
 
  public:
-  PosixSequentialFile(const std::string& fname, FILE* f)
-    : filename_(fname), file_(f) { }
-  virtual ~PosixSequentialFile() { fclose(file_); }
+  WindowsSequentialFile(const std::string& fname, HANDLE h)
+    : filename_(fname), handle_(h) { }
+  virtual ~WindowsSequentialFile() { CloseHandle(handle_); }
 
   virtual Status Read(size_t n, Slice* result, char* scratch) {
-  Status s;
-#ifdef BSD
-  // fread_unlocked doesn't exist on FreeBSD
-  size_t r = fread(scratch, 1, n, file_);
-#else
-  size_t r = fread_unlocked(scratch, 1, n, file_);
-#endif
-  *result = Slice(scratch, r);
-  if (r < n) {
-    if (feof(file_)) {
-    // We leave status as ok if we hit the end of the file
-    } else {
-    // A partial read with an error: return a non-ok status
-    s = Status::IOError(filename_, strerror(errno));
+    size_t r = 0;
+
+    if (!::ReadFile(handle_, scratch, static_cast<DWORD>(n), reinterpret_cast<DWORD *>(&r), NULL))
+    {
+        return WinIOError(filename_, GetLastError());
     }
-  }
-  return s;
+   *result = Slice(scratch, r);
+   return Status::OK();
   }
 
   virtual Status Skip(uint64_t n) {
-  if (fseek(file_, static_cast<long>(n), SEEK_CUR)) {
-    return Status::IOError(filename_, strerror(errno));
-  }
-  return Status::OK();
+    const LONG lo = static_cast<LONG>(n & 0xffffffff);
+    LONG hi = static_cast<LONG>(n >> 32);
+    if (SetFilePointer(handle_, lo, &hi, FILE_BEGIN) == INVALID_SET_FILE_POINTER)
+    {
+        return WinIOError(filename_, GetLastError());
+    }
+    return Status::OK();
   }
 };
 
-class PosixRandomAccessFile: public RandomAccessFile {
+class WindowsRandomAccessFile: public RandomAccessFile {
  private:
   std::string filename_;
-  int fd_;
-  mutable std::mutex mu_;
+  const void * region_;
+  uint64_t length_;
+  HANDLE handle_;
 
  public:
-  PosixRandomAccessFile(const std::string& fname, int fd)
-    : filename_(fname), fd_(fd) { }
-  virtual ~PosixRandomAccessFile() { close(fd_); }
+  WindowsRandomAccessFile(const std::string& fname, const void * base, uint64_t l, HANDLE h)
+    : filename_(fname), region_(base), length_(l), handle_(h) { }
+  virtual ~WindowsRandomAccessFile() 
+  { 
+      if (region_)
+      {
+          UnmapViewOfFile(region_);
+      }
+      CloseHandle(handle_); 
+  }
 
   virtual Status Read(uint64_t offset, size_t n, Slice* result,
             char* scratch) const {
     Status s;
-#ifdef WIN32
-    // no pread on Windows so we emulate it with a mutex
-    std::unique_lock<std::mutex> lock(mu_);
-
-    if (::_lseeki64(fd_, offset, SEEK_SET) == -1L) {
-      return Status::IOError(filename_, strerror(errno));
-    }
-
-    int r = ::_read(fd_, scratch, static_cast<unsigned int>(n));
-    *result = Slice(scratch, (r < 0) ? 0 : r);
-    lock.unlock();
-#else
-    ssize_t r = pread(fd_, scratch, n, static_cast<off_t>(offset));
-    *result = Slice(scratch, (r < 0) ? 0 : r);
-#endif
-    if (r < 0) {
-      // An error: return a non-ok status
-      s = Status::IOError(filename_, strerror(errno));
+    if (offset + static_cast<uint64_t>(n) > length_) {
+      *result = Slice();
+      s = IOError(filename_, EINVAL);
+    } else {
+      *result = Slice(reinterpret_cast<const char*>(region_) + offset, n);
     }
     return s;
   }
 };
 
-// We preallocate up to an extra megabyte and use memcpy to append new
-// data to the file.  This is safe since we either properly close the
-// file before reading from it, or for log files, the reading code
-// knows enough to skip zero suffixes.
-
-class BoostFile : public WritableFile {
-
-public:
-  explicit BoostFile(std::string path) : path_(path), written_(0) {
-    Open();
-  }
-
-  virtual ~BoostFile() {
-    Close();
-  }
+class WindowsWritableFile : public WritableFile {
 
 private:
-  void Open() {
-    // we truncate the file as implemented in env_posix
-     file_.open(path_.generic_string().c_str(), 
-         std::ios_base::trunc | std::ios_base::out | std::ios_base::binary);
-     written_ = 0;
-  }
+  boost::filesystem::path filename_;
+  HANDLE handle_;
+
+public:
+  WindowsWritableFile(const std::string& fname, HANDLE h)
+      : filename_(fname), handle_(h) { }
+
+  ~WindowsWritableFile() { CloseHandle(handle_); }
 
 public:
   virtual Status Append(const Slice& data) {
-    Status result;
-    file_.write(data.data(), data.size());
-    if (!file_.good()) {
-      result = Status::IOError(
-          path_.generic_string() + " Append", "cannot write");
+
+    DWORD written = 0;
+
+    if (!::WriteFile(handle_, data.data(), static_cast<DWORD>(data.size()), &written, NULL))
+    {
+        return WinIOError(filename_.string(), ::GetLastError());
     }
-    return result;
+
+    if (static_cast<size_t>(written) != data.size())
+    {
+        return Status::IOError(filename_.string(), "could not write all bytes to disk");
+    }
+
+    return Status::OK();
   }
 
   virtual Status Close() {
-    Status result;
-
-    try {
-      if (file_.is_open()) {
-        Sync();
-        file_.close();
-      }
-    } catch (const std::exception & e) {
-      result = Status::IOError(path_.generic_string() + " close", e.what());
-    }
-
-    return result;
+    ::CloseHandle(handle_);
+    handle_ = NULL;
+    return Status::OK();
   }
 
   virtual Status Flush() {
-    file_.flush();
     return Status::OK();
   }
 
   virtual Status Sync() {
-    Status result;
-    try {
-      Flush();
-    } catch (const std::exception & e) {
-      result = Status::IOError(path_.string() + " sync", e.what());
-    }
-
-    return result;
+    return Status::OK();
   }
 
-private:
-  boost::filesystem::path path_;
-  std::uint64_t written_;
-  std::ofstream file_;
+
 };
-
-
 
 class BoostFileLock : public FileLock {
  public:
@@ -272,60 +258,129 @@ class PosixEnv : public Env {
  public:
   PosixEnv();
   virtual ~PosixEnv() 
-  {
-      if (bgthread_)
+  {      
+      bool expected = true;
+      if (run_bg_thread_.compare_exchange_strong(expected, false))
       {
-          run_bg_thread_ = false;
-       
           bgsignal_.notify_one();
-          
-          bgthread_->join();
-          bgthread_.reset();
+      }
+
+      std::thread * t = nullptr;
+
+      {
+          std::unique_lock<std::mutex> lock(mu_);
+          t = bgthread_.get();
+      }
+
+      if (t)
+      {
+          t->join();
       }
 
       std::unique_lock<std::mutex> lock(mu_);
+      bgthread_.reset();
+
       queue_.clear();
   }
 
   virtual Status NewSequentialFile(const std::string& fname,
                    SequentialFile** result) {
-    FILE* f = fopen(fname.c_str(), "rb");
-    if (f == NULL) {
-      *result = NULL;
-      return Status::IOError(fname, strerror(errno));
-    } else {
-      *result = new PosixSequentialFile(fname, f);
-      return Status::OK();
+    HANDLE h = ::CreateFile(fname.c_str(), 
+        GENERIC_READ, 
+        FILE_SHARE_READ, 
+        NULL, 
+        OPEN_EXISTING, 
+        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN,
+        NULL);
+
+    if (h == INVALID_HANDLE_VALUE)
+    {
+        return WinIOError(fname, ::GetLastError());
     }
+    *result = new WindowsSequentialFile(fname, h);
+    return Status::OK();
   }
 
   virtual Status NewRandomAccessFile(const std::string& fname,
                    RandomAccessFile** result) {
-#ifdef WIN32
-    int fd = _open(fname.c_str(), _O_RDONLY | _O_RANDOM | _O_BINARY);
-#else
-    int fd = open(fname.c_str(), O_RDONLY);
-#endif
-    if (fd < 0) {
-      *result = NULL;
-      return Status::IOError(fname, strerror(errno));
+    HANDLE h = ::CreateFile(fname.c_str(), 
+        GENERIC_READ, 
+        FILE_SHARE_READ, 
+        NULL, 
+        OPEN_EXISTING, 
+        FILE_ATTRIBUTE_NORMAL,
+        NULL);
+
+    if (h == INVALID_HANDLE_VALUE)
+    {
+        return WinIOError(fname, ::GetLastError());
     }
-    *result = new PosixRandomAccessFile(fname, fd);
-    return Status::OK();
+
+    DWORD hi_size = 0;
+
+    const DWORD lo_size = ::GetFileSize(h, &hi_size);
+
+    Status s;
+
+    if (lo_size == INVALID_FILE_SIZE)
+    {
+        s = WinIOError(fname, ::GetLastError());
+    }
+
+    const uint64_t file_size = (static_cast<uint64_t>(hi_size) << 32uLL) + static_cast<uint64_t>(lo_size);
+
+    HANDLE map = NULL;
+    const void * base = nullptr;
+
+    if (s.ok())
+    {
+        map = ::CreateFileMapping(h, NULL, PAGE_READONLY, 0, 0, NULL);
+
+        if (map == NULL)
+        {
+            s = WinIOError(fname, ::GetLastError());
+        }
+
+        // handle of the file no longer needed whether we knew success or failure
+        ::CloseHandle(h);
+
+        if (map)
+        {
+            base = ::MapViewOfFile(map, FILE_MAP_READ, 0, 0, 0);
+            if (!base)
+            {
+                s = WinIOError(fname, ::GetLastError());
+                ::CloseHandle(map);
+            }
+        }
+    }
+
+    if (s.ok())
+    {
+        *result = new WindowsRandomAccessFile(fname, base, file_size, map);
+    }
+
+    return s;
   }
 
   virtual Status NewWritableFile(const std::string& fname,
                  WritableFile** result) {
-    Status s;
-    try {
-      // will create a new empty file to write to
-      *result = new BoostFile(fname);
-    }
-    catch (const std::exception & e) {
-      s = Status::IOError(fname, e.what());
+
+    HANDLE h = ::CreateFile(fname.c_str(), 
+        GENERIC_WRITE, 
+        0, 
+        NULL, 
+        CREATE_ALWAYS, 
+        FILE_ATTRIBUTE_NORMAL,
+        NULL);
+
+    if (h == INVALID_HANDLE_VALUE)
+    {
+        return WinIOError(fname, ::GetLastError());
     }
 
-    return s;
+    *result = new WindowsWritableFile(fname, h);
+    return Status::OK();
   }
 
   virtual bool FileExists(const std::string& fname) {
@@ -464,9 +519,7 @@ class PosixEnv : public Env {
   }
 
   virtual void Schedule(void (*function)(void*), void* arg);
-
-  virtual void StartThread(void (*function)(void* arg), void* arg);
-
+  
   virtual Status GetTestDirectory(std::string* result) {
     boost::system::error_code ec;
     boost::filesystem::path temp_dir = 
@@ -519,12 +572,9 @@ class PosixEnv : public Env {
     std::this_thread::sleep_for(std::chrono::microseconds(micros));
   }
 
- private:
-  void PthreadCall(const char* label, int result) {
-  if (result != 0) {
-    fprintf(stderr, "pthread %s: %s\n", label, strerror(result));
-    exit(1);
-  }
+  public:
+  virtual std::thread::native_handle_type GetBackgroundThreadHandle() {
+    return bgthread_ ? bgthread_->native_handle() : std::thread::native_handle_type();
   }
 
   // BGThread() is the body of the background thread
@@ -556,8 +606,7 @@ void PosixEnv::Schedule(void (*function)(void*), void* arg) {
   // Start background thread if necessary
   if (!bgthread_) {
      run_bg_thread_ = true;
-     bgthread_.reset(
-         new std::thread(std::bind(&PosixEnv::BGThreadWrapper, this)));
+     bgthread_.reset(new std::thread(std::bind(&PosixEnv::BGThreadWrapper, this)));
   }
 
   // Add to priority queue
@@ -571,7 +620,58 @@ void PosixEnv::Schedule(void (*function)(void*), void* arg) {
 
 }
 
+#ifdef _MSC_VER
+// we use SEH, we cannot have a destructor, therefore we pass a pure pointer
+static void name_this_thread(const char * thread_name)
+{
+    if (!::IsDebuggerPresent())
+    {
+        // no need to do this if no debugger is present, remember threads in Windows don't really have name
+        // this is just a secret handshake with Visual Studio to name threads and make debugging more pleasant
+        // on UNIXES however the name will appear in utilities such as htop
+        return;
+    }
+
+    static const DWORD MS_VC_EXCEPTION = 0x406D1388;
+
+#pragma pack(push,8)
+    struct THREADNAME_INFO
+    {
+        DWORD dwType; // Must be 0x1000.
+        LPCSTR szName; // Pointer to name (in user addr space).
+        DWORD dwThreadID; // Thread ID (-1=caller thread).
+        DWORD dwFlags; // Reserved for future use, must be zero.
+    };
+#pragma pack(pop)
+
+    THREADNAME_INFO info;
+    info.dwType = 0x1000;
+    info.szName = thread_name; 
+    info.dwThreadID = ::GetCurrentThreadId();
+    info.dwFlags = 0;
+
+    __try
+    {
+        RaiseException(MS_VC_EXCEPTION, 0, sizeof(info) / sizeof(ULONG_PTR), (ULONG_PTR*)&info);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+    }
+
+}
+#else
+
+// useful for debugging to name the thread, since we only use env_boost.cc for Windows
+// we have this macro
+// for env_posix.cc we also do the right thing for FreeBSD, Linux and MacOS
+
+static void name_this_thread(const char *) {}
+#endif
+
 void PosixEnv::BGThread() {
+    
+    name_this_thread("leveldb background");
+
     try
     {
         while (run_bg_thread_) {
@@ -599,36 +699,15 @@ void PosixEnv::BGThread() {
 
 }
 
-namespace {
-struct StartThreadState {
-  void (*user_function)(void*);
-  void* arg;
-};
-}
-
-static void* StartThreadWrapper(void* arg) {
-  StartThreadState* state = reinterpret_cast<StartThreadState*>(arg);
-  state->user_function(state->arg);
-  delete state;
-  return NULL;
-}
-
-void PosixEnv::StartThread(void (*function)(void* arg), void* arg) {
-  StartThreadState* state = new StartThreadState;
-  state->user_function = function;
-  state->arg = arg;
-
-  std::thread t(std::bind(&StartThreadWrapper, state));
-  t.detach();
-}
-
 }
 
 static std::once_flag once;
 static Env* default_env = nullptr;
 static void InitDefaultEnv() { 
-  ::memset(global_read_only_buf, 0, sizeof(global_read_only_buf));
-  default_env = new PosixEnv;
+  default_env = new PosixEnv();
+
+  // force background thread creation so that thread affinity can work 
+  default_env->Schedule([](void *) {}, nullptr);
 }
 
 Env* Env::Default() {
@@ -641,5 +720,7 @@ void Env::UnsafeDeallocate() {
     delete default_env;
     default_env = nullptr;
 }
+
+
 
 }

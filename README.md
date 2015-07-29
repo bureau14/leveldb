@@ -1,9 +1,9 @@
-LevelDB B14 branch
+LevelDB qdb branch
 ==================
 
 Current version: 1.18
 
-Bureau 14 [LevelDB](http://code.google.com/p/leveldb/) branch with full Windows support. This is not an official LevelDB branch, but the branch we use in our product, [quasardb](https://www.quasardb.net/).
+quasardb [LevelDB](http://code.google.com/p/leveldb/) branch with full Windows support. This is not an official LevelDB branch, but the branch we use in our product, [quasardb](https://www.quasardb.net/).
 
 * Full Windows support: everything builds, all tests pass;
 * [CMake](http://www.cmake.org/) based build
@@ -18,5 +18,3 @@ Tested on [FreeBSD](http://www.freebsd.org/), Linux and Windows (32-bit & 64-bit
 Might contains trace of nuts.
 
 Comments? Questions? Suggestions? Pull!
-
-B14 Maintainer: Edouard

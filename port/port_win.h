@@ -6,7 +6,7 @@
 
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
-// 
+//
 //  * Redistributions of source code must retain the above copyright
 //    notice, this list of conditions and the following disclaimer.
 //  * Redistributions in binary form must reproduce the above copyright
@@ -15,7 +15,7 @@
 //  * Neither the name of the University of California, Berkeley nor the
 //    names of its contributors may be used to endorse or promote products
 //    derived from this software without specific prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 // WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -31,12 +31,14 @@
 #ifndef STORAGE_LEVELDB_PORT_PORT_WIN_H_
 #define STORAGE_LEVELDB_PORT_PORT_WIN_H_
 
+#if _MSC_VER < 1900
 #define snprintf _snprintf
+#endif
 #define close _close
 #define fread_unlocked _fread_nolock
 
 #ifdef SNAPPY
-#include <snappy/snappy.h>
+#include <snappy.h>
 #endif
 
 #include <string>
@@ -63,20 +65,24 @@ class Mutex {
  private:
   friend class CondVar;
   // critical sections are more efficient than mutexes
-  // but they are not recursive and can only be used to synchronize threads within the same process
-  // additionnaly they cannot be used with SignalObjectAndWait that we use for CondVar
+  // but they are not recursive and can only be used to synchronize threads
+  // within the same process
+  // additionnaly they cannot be used with SignalObjectAndWait that we use for
+  // CondVar
   // we use opaque void * to avoid including windows.h in port_win.h
-  void * mutex_;
+  void* mutex_;
 
   // No copying
   Mutex(const Mutex&);
   void operator=(const Mutex&);
 };
 
-// the Win32 API offers a dependable condition variable mechanism, but only starting with
+// the Win32 API offers a dependable condition variable mechanism, but only
+// starting with
 // Windows 2008 and Vista
 // no matter what we will implement our own condition variable with a semaphore
-// implementation as described in a paper written by Douglas C. Schmidt and Irfan Pyarali
+// implementation as described in a paper written by Douglas C. Schmidt and
+// Irfan Pyarali
 class CondVar {
  public:
   explicit CondVar(Mutex* mu);
@@ -84,25 +90,27 @@ class CondVar {
   void Wait();
   void Signal();
   void SignalAll();
+
  private:
   Mutex* mu_;
-  
+
   Mutex wait_mtx_;
   long waiting_;
-  
-  void * sema_;
-  void * event_;
 
-  bool broadcasted_;  
+  void* sema_;
+  void* event_;
+
+  bool broadcasted_;
 };
 
 // Storage for a lock-free pointer
 class AtomicPointer {
  private:
-  void * rep_;
+  void* rep_;
+
  public:
-  AtomicPointer() : rep_(nullptr) { }
-  explicit AtomicPointer(void* v); 
+  AtomicPointer() : rep_(nullptr) {}
+  explicit AtomicPointer(void* v);
   void* Acquire_Load() const;
 
   void Release_Store(void* v);
@@ -139,8 +147,7 @@ inline bool Snappy_GetUncompressedLength(const char* input, size_t length,
 #endif
 }
 
-inline bool Snappy_Uncompress(const char* input, size_t length,
-                              char* output) {
+inline bool Snappy_Uncompress(const char* input, size_t length, char* output) {
 #ifdef SNAPPY
   return snappy::RawUncompress(input, length, output);
 #else
@@ -151,7 +158,6 @@ inline bool Snappy_Uncompress(const char* input, size_t length,
 inline bool GetHeapProfile(void (*func)(void*, const char*, int), void* arg) {
   return false;
 }
-
 }
 }
 

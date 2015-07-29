@@ -327,29 +327,34 @@ TEST(CorruptionTest, CompactionInputError) {
   dbi->TEST_CompactMemTable();
   const int last = config::kMaxMemCompactLevel;
   ASSERT_EQ(1, Property("leveldb.num-files-at-level" + NumberToString(last)));
-
+  Close();
   Corrupt(kTableFile, 100, 1);
+  Reopen();
   Check(5, 9);
 
   // Force compactions by writing lots of values
   Build(10000);
   Check(10000, 10000);
+
+  Close();
 }
 
 TEST(CorruptionTest, CompactionInputErrorParanoid) {
   options_.paranoid_checks = true;
   options_.write_buffer_size = 512 << 10;
-  Reopen();
-  DBImpl* dbi = reinterpret_cast<DBImpl*>(db_);
-
+  
   // Make multiple inputs so we need to compact.
   for (int i = 0; i < 2; i++) {
+    Reopen();
     Build(10);
-    dbi->TEST_CompactMemTable();
+    reinterpret_cast<DBImpl*>(db_)->TEST_CompactMemTable();
+    Close();
     Corrupt(kTableFile, 100, 1);
     env_.SleepForMicroseconds(100000);
   }
-  dbi->CompactRange(NULL, NULL);
+
+  Reopen();
+  reinterpret_cast<DBImpl*>(db_)->CompactRange(NULL, NULL);
 
   // Write must fail because of corrupted table
   std::string tmp1, tmp2;
@@ -361,7 +366,10 @@ TEST(CorruptionTest, UnrelatedKeys) {
   Build(10);
   DBImpl* dbi = reinterpret_cast<DBImpl*>(db_);
   dbi->TEST_CompactMemTable();
+  Close();
   Corrupt(kTableFile, 100, 1);
+  Reopen();
+  dbi = reinterpret_cast<DBImpl*>(db_);
 
   std::string tmp1, tmp2;
   ASSERT_OK(db_->Put(WriteOptions(), Key(1000, &tmp1), Value(1000, &tmp2)));

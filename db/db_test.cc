@@ -1808,7 +1808,8 @@ TEST(DBTest, MultiThreaded) {
     for (int id = 0; id < kNumThreads; id++) {
       thread[id].state = &mt;
       thread[id].id = id;
-      env_->StartThread(MTThreadBody, &thread[id]);
+      std::thread t(std::bind(&MTThreadBody, &thread[id]));
+      t.detach();
     }
 
     // Let them run for a while

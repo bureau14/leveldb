@@ -64,39 +64,6 @@ TEST(EnvPosixTest, RunMany) {
   ASSERT_EQ(4, reinterpret_cast<uintptr_t>(cur));
 }
 
-struct State {
-  port::Mutex mu;
-  int val;
-  int num_running;
-};
-
-static void ThreadBody(void* arg) {
-  State* s = reinterpret_cast<State*>(arg);
-  s->mu.Lock();
-  s->val += 1;
-  s->num_running -= 1;
-  s->mu.Unlock();
-}
-
-TEST(EnvPosixTest, StartThread) {
-  State state;
-  state.val = 0;
-  state.num_running = 3;
-  for (int i = 0; i < 3; i++) {
-    env_->StartThread(&ThreadBody, &state);
-  }
-  while (true) {
-    state.mu.Lock();
-    int num = state.num_running;
-    state.mu.Unlock();
-    if (num == 0) {
-      break;
-    }
-    Env::Default()->SleepForMicroseconds(kDelayMicros);
-  }
-  ASSERT_EQ(state.val, 3);
-}
-
 }  // namespace leveldb
 
 int main(int argc, char** argv) {

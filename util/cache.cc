@@ -239,10 +239,12 @@ Cache::Handle* LRUCache::Insert(
   LRU_Append(e);
   usage_ += charge;
 
-  LRUHandle* old = table_.Insert(e);
-  if (old != NULL) {
-    LRU_Remove(old);
-    Unref(old);
+  {
+    LRUHandle* old = table_.Insert(e);
+    if (old != NULL) {
+      LRU_Remove(old);
+      Unref(old);
+    }
   }
 
   while (usage_ > capacity_ && lru_.next != &lru_) {
